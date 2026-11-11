@@ -35,7 +35,8 @@ Por ello se adoptó **Data Binding con `xsdata`**: las clases Python en `src/inv
 
 ```mermaid
 flowchart LR
-    ODOO["Payload Odoo Ventas (JSON/Dict)"] --> APP["Capa Aplicación (GenerateInvoiceXmlUseCase)"]
+    ODOO["Odoo Ventas (Binarios / Puerto 8069)"] --> RPC["OdooXmlRpcClient (XML-RPC)"]
+    RPC --> APP["Capa Aplicación (GenerateInvoiceXmlUseCase)"]
     APP --> DOM["Dominio Puro (Invoice, InvoiceLine, Party)"]
     DOM --> MAP["Mapper UBL 2.1"]
     MAP --> XSD_MODELS["Modelos Generados desde XSD 2.1 (xsdata)"]
@@ -45,8 +46,8 @@ flowchart LR
 ```
 
 - **Dominio (`src/invoice_xml/domain/`):** No importa ni `xsdata`, ni `lxml`, ni librerías de Odoo. Define reglas de negocio (moneda ISO 4217, código de país ISO 3166-1 alpha-2, cantidades mayores a cero, redondeo financiero `ROUND_HALF_UP`).
-- **Aplicación (`src/invoice_xml/application/`):** Orquesta el caso de uso principal y provee un adaptador (`odoo_adapter.py`) que convierte estructuras típicas de un pedido/factura de Odoo Ventas al dominio.
-- **Infraestructura (`src/invoice_xml/infrastructure/`):** Contiene los esquemas locales (`schemas/ubl-2.1/`), los modelos compilados desde el XSD, el mapper, el serializador y el validador XSD.
+- **Aplicación (`src/invoice_xml/application/`):** Orquesta el caso de uso principal, define el puerto `OdooInvoiceGateway` y provee el adaptador `odoo_adapter.py` que convierte estructuras de `account.move` o `sale.order` al dominio.
+- **Infraestructura (`src/invoice_xml/infrastructure/`):** Contiene los esquemas locales (`schemas/ubl-2.1/`), los modelos compilados desde el XSD, el conector XML-RPC hacia Odoo (`odoo_client.py`), el mapper, el serializador y el validador XSD.
 
 ### 3.3. Reproducibilidad vía Git (`git clone`)
 Todos los esquemas XSD oficiales necesarios (`maindoc` y `common`) se versionan dentro del repositorio en `schemas/ubl-2.1/`, utilizando rutas relativas (`pathlib.Path`) y dependencias declaradas en `pyproject.toml` y `requirements.txt`. Cualquier evaluador o desarrollador puede clonar el repositorio y ejecutar las pruebas unitarias sin conexión a internet ni configuraciones manuales.

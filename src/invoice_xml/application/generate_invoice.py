@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from invoice_xml.application.odoo_adapter import odoo_payload_to_domain
+from invoice_xml.application.ports import OdooInvoiceGateway
 from invoice_xml.domain.models import Invoice
 from invoice_xml.infrastructure.mapper import domain_to_ubl_invoice
 from invoice_xml.infrastructure.xml_service import XsdValidator, serialize_ubl_invoice
@@ -49,6 +50,28 @@ class GenerateInvoiceXmlUseCase:
         invoice = odoo_payload_to_domain(payload)
         return self.execute(
             invoice, validate_xsd=validate_xsd, pretty_print=pretty_print
+        )
+
+    def execute_from_odoo_gateway(
+        self,
+        gateway: OdooInvoiceGateway,
+        *,
+        document_number: str | None = None,
+        source: Literal["invoice", "sale"] = "invoice",
+        validate_xsd: bool = True,
+        pretty_print: bool = True,
+    ) -> str:
+        """Consulta Odoo a través del puerto `OdooInvoiceGateway` y genera el XML UBL 2.1."""
+        if source == "invoice":
+            payload = gateway.fetch_invoice_payload(document_number)
+        elif source == "sale":
+            payload = gateway.fetch_sale_order_payload(document_number)
+        else:
+            raise ValueError(
+                f"Origen Odoo no soportado: '{source}'. Use 'invoice' o 'sale'."
+            )
+        return self.execute_from_odoo(
+            payload, validate_xsd=validate_xsd, pretty_print=pretty_print
         )
 
     def execute_to_file(

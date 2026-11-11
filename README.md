@@ -17,14 +17,18 @@ Componente en Python desarrollado bajo un enfoque **Schema-First** y **Arquitect
 │       └── common/                      # Esquemas comunes importados por Invoice XSD 2.1
 ├── src/
 │   └── invoice_xml/
+│       ├── cli.py                       # CLI para modo demo o conexión en vivo con Odoo
 │       ├── domain/                      # Entidades puras (Invoice, InvoiceLine, Party) con Decimal
-│       ├── application/                 # Caso de uso y adaptador desde Odoo Ventas
+│       ├── application/                 # Casos de uso, puerto OdooInvoiceGateway y adaptador Odoo
 │       └── infrastructure/
 │           ├── ubl_models/              # Dataclasses generadas desde UBL-Invoice-2.1.xsd (xsdata)
 │           ├── mapper.py                # Traductor Dominio -> UBL 2.1
+│           ├── odoo_client.py           # Conector XML-RPC hacia Odoo (`account.move` / `sale.order`)
 │           └── xml_service.py           # Serializador XML UTF-8 + Validador XSD 2.1 (lxml)
 ├── tests/
-│   └── test_invoice_generation.py       # Suite de pruebas unitarias de generación y validación XSD
+│   ├── test_invoice_generation.py       # Pruebas unitarias de generación y validación XSD
+│   └── test_odoo_client.py              # Pruebas unitarias del conector XML-RPC de Odoo (mocks)
+├── .env.example
 ├── pyproject.toml
 └── requirements.txt
 ```
@@ -42,9 +46,39 @@ cd 2do-parcial
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+pip install -e .
 ```
 
 *(En Linux/macOS activar con `source .venv/bin/activate`).*
+
+---
+
+## Conexión con Odoo (API XML-RPC)
+
+El conector `OdooXmlRpcClient` se comunica con Odoo (por ejemplo, instalado localmente desde binarios en `http://localhost:8069`) usando `xmlrpc.client`.
+
+1. Copia `.env.example` como `.env` (ignorado por Git) y coloca tus credenciales de Odoo:
+
+```dotenv
+ODOO_URL=http://localhost:8069
+ODOO_DB=tu_base_de_datos
+ODOO_USER=tu_usuario@correo.com
+ODOO_API_KEY=tu_api_key_o_password
+```
+
+2. Genera un XML UBL 2.1 validado contra el XSD 2.1 ejecutando directamente `exportar_odoo.py` (carga `.env` y `src/` automáticamente):
+
+```powershell
+# Exportar la última factura publicada (account.move) a salida/factura_odoo.xml
+python exportar_odoo.py
+
+# O especificando origen/número/salida
+python exportar_odoo.py --source invoice --number "INV/2026/0001" -o salida/factura.xml
+python exportar_odoo.py --source sale --number "S00042" -o salida/pedido.xml
+
+# Modo demo offline (sin requerir Odoo encendido)
+python exportar_odoo.py --demo -o salida/demo.xml
+```
 
 ---
 

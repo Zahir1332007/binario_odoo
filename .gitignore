@@ -27,4 +27,10 @@ Thumbs.db
 # Temporary downloads / generated artifacts
 tmp/
 *.zip
+salida/
+
+# Local secrets (keep .env.example)
+.env
+.env.*
+!.env.example
 

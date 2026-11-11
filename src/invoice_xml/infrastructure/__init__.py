@@ -1,6 +1,11 @@
-"""Capa de infraestructura para mapeo, serialización y validación XML UBL 2.1."""
+"""Capa de infraestructura para mapeo, serialización, validación XSD e integración Odoo."""
 
 from invoice_xml.infrastructure.mapper import domain_to_ubl_invoice
+from invoice_xml.infrastructure.odoo_client import (
+    OdooConnectionConfig,
+    OdooConnectionError,
+    OdooXmlRpcClient,
+)
 from invoice_xml.infrastructure.xml_service import (
     DEFAULT_INVOICE_XSD_PATH,
     XsdValidator,
@@ -9,6 +14,9 @@ from invoice_xml.infrastructure.xml_service import (
 
 __all__ = [
     "DEFAULT_INVOICE_XSD_PATH",
+    "OdooConnectionConfig",
+    "OdooConnectionError",
+    "OdooXmlRpcClient",
     "XsdValidator",
     "domain_to_ubl_invoice",
     "serialize_ubl_invoice",

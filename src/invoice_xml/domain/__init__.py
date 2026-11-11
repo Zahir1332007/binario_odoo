@@ -10,4 +10,3 @@ __all__ = [
     "XmlSchemaValidationError",
     "round_money",
 ]
-

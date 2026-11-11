@@ -11,4 +11,3 @@ class XmlSchemaValidationError(Exception):
     def __init__(self, message: str, details: list[str] | None = None) -> None:
         super().__init__(message)
         self.details = details or []
-

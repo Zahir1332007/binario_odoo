@@ -17,6 +17,9 @@ dev = [
     "pytest>=9.0",
 ]
 
+[project.scripts]
+invoice-xml = "invoice_xml.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
