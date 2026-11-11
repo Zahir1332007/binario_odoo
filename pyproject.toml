@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "invoice-xml-ubl21"
+version = "1.0.0"
+description = "Generador de facturas electrónicas XML OASIS UBL 2.1 a partir de Invoice XSD 2.1, integrado con flujo de Ventas de Odoo."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "xsdata[cli,lxml]>=26.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-v"
+
