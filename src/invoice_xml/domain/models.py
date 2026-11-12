@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, time
 from decimal import ROUND_HALF_UP, Decimal
@@ -9,11 +10,47 @@ from decimal import ROUND_HALF_UP, Decimal
 from invoice_xml.domain.exceptions import InvoiceDomainError
 
 TWO_DECIMALS = Decimal("0.01")
+INVOICE_ID_PATTERN = re.compile(r"^[A-Z0-9]{4}-\d{1,8}$")
+_TRAILING_DIGITS_RE = re.compile(r"(\d+)$")
 
 
 def round_money(amount: Decimal) -> Decimal:
     """Redondea importes monetarios a 2 decimales usando ROUND_HALF_UP."""
     return amount.quantize(TWO_DECIMALS, rounding=ROUND_HALF_UP)
+
+
+def normalize_invoice_id(
+    raw_id: str, default_series: str = "F001", correlative_width: int = 8
+) -> str:
+    """Normaliza un comprobante al formato SUNAT/OSE `'SERIE-00000001'` (correlativo de 8 dígitos)."""
+    cleaned = raw_id.strip().upper()
+    if not cleaned:
+        raise InvoiceDomainError("El número de factura (invoice_id) es obligatorio.")
+    if INVOICE_ID_PATTERN.match(cleaned):
+        series, num_part = cleaned.split("-", 1)
+        correlative = int(num_part)
+        if correlative <= 0:
+            raise InvoiceDomainError(
+                f"El correlativo de la factura debe ser mayor que cero (recibido: '{raw_id}')."
+            )
+        return f"{series}-{correlative:0{correlative_width}d}"
+
+    match = _TRAILING_DIGITS_RE.search(cleaned)
+    if not match:
+        raise InvoiceDomainError(
+            f"No se pudo obtener un correlativo numérico desde '{raw_id}' para formar SERIE-CORRELATIVO (ej. FE01-00000573)."
+        )
+    correlative = int(match.group(1))
+    if correlative <= 0:
+        raise InvoiceDomainError(
+            f"El correlativo de la factura debe ser mayor que cero (recibido: '{raw_id}')."
+        )
+    series = default_series.strip().upper()
+    if not re.match(r"^[A-Z0-9]{4}$", series):
+        raise InvoiceDomainError(
+            f"La serie debe tener 4 caracteres alfanuméricos (recibido: '{default_series}')."
+        )
+    return f"{series}-{correlative:0{correlative_width}d}"
 
 
 @dataclass(frozen=True)
@@ -46,6 +83,7 @@ class Party:
     address: Address
     registration_name: str | None = None
     email: str | None = None
+    document_type_code: str = "6"  # Catálogo 06 SUNAT: 6 = RUC, 1 = DNI
 
     def __post_init__(self) -> None:
         if not self.tax_id.strip():
@@ -112,15 +150,15 @@ class Invoice:
     supplier: Party
     customer: Party
     lines: tuple[InvoiceLine, ...]
-    invoice_type_code: str = "380"  # UN/ECE 1001: 380 = Commercial Invoice
+    invoice_type_code: str = "01"  # Catálogo 01 SUNAT / UBL 2.1: 01 = Factura
     issue_time: time | None = None
     due_date: date | None = None
     order_reference_id: str | None = (
         None  # Referencia al Pedido de Venta (ej. Odoo SO001)
     )
     note: str | None = None
-    customization_id: str = "urn:oasis:names:specification:ubl:xpath:Invoice-2.1"
-    profile_id: str = "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
+    customization_id: str = "2.0"
+    profile_id: str = "0101"
     ubl_version_id: str = "2.1"
     tax_groups: dict[tuple[str, str, Decimal], Decimal] = field(init=False, repr=False)
 
@@ -128,6 +166,10 @@ class Invoice:
         if not self.invoice_id.strip():
             raise InvoiceDomainError(
                 "El número de factura (invoice_id) es obligatorio."
+            )
+        if not INVOICE_ID_PATTERN.match(self.invoice_id):
+            raise InvoiceDomainError(
+                f"El ID '{self.invoice_id}' es inválido para OSE/UBL: debe tener formato SERIE-CORRELATIVO con '-' (ej. FFF1-1 o F001-1)."
             )
         if len(self.currency_code.strip()) != 3 or not self.currency_code.isalpha():
             raise InvoiceDomainError(
@@ -174,3 +216,12 @@ class Invoice:
     def payable_amount(self) -> Decimal:
         """Importe total a pagar."""
         return self.tax_inclusive_amount
+
+    @property
+    def sunat_filename(self) -> str:
+        """Nombre oficial SUNAT Perú: `{RUC}-{TIPO}-{SERIE}-{CORRELATIVO_8D}.xml`."""
+        series, correlative = self.invoice_id.split("-", 1)
+        return (
+            f"{self.supplier.tax_id}-{self.invoice_type_code}"
+            f"-{series}-{int(correlative):08d}.xml"
+        )

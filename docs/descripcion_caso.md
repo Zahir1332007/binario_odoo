@@ -18,7 +18,7 @@ El enfoque de desarrollo basado en **código fuente (Git)** permite construir un
 2. El sistema exporta o envía los datos estructurados de la venta/factura hacia nuestro servicio generador en Python (`GenerateInvoiceXmlUseCase`).
 3. El módulo de aplicación transforma el payload de Odoo hacia un **Modelo de Dominio puro (`Invoice`)** que valida invariantes de negocio y realiza cálculos monetarios exactos usando `Decimal` (evitando errores de precisión de punto flotante `float`).
 4. La capa de infraestructura traduce el modelo de dominio hacia las **clases tipadas generadas directamente desde `UBL-Invoice-2.1.xsd`** mediante `xsdata`.
-5. El serializador produce el XML UTF-8 con los namespaces oficiales de OASIS UBL 2.1 y, como barrera final de calidad, el validador verifica que el documento cumpla al 100% con el esquema `UBL-Invoice-2.1.xsd` antes de entregarlo.
+5. El serializador produce el XML ISO-8859-1 con los namespaces oficiales de OASIS UBL 2.1 y, como barrera final de calidad, el validador verifica que el documento cumpla al 100% con el esquema `UBL-Invoice-2.1.xsd` antes de entregarlo.
 
 ---
 
@@ -40,7 +40,7 @@ flowchart LR
     APP --> DOM["Dominio Puro (Invoice, InvoiceLine, Party)"]
     DOM --> MAP["Mapper UBL 2.1"]
     MAP --> XSD_MODELS["Modelos Generados desde XSD 2.1 (xsdata)"]
-    XSD_MODELS --> SER["XmlSerializer UTF-8"]
+    XSD_MODELS --> SER["XmlSerializer ISO-8859-1"]
     SER --> VAL["XsdValidator (UBL-Invoice-2.1.xsd)"]
     VAL --> XML["Factura XML UBL 2.1 Válida"]
 ```

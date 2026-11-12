@@ -24,7 +24,7 @@ Componente en Python desarrollado bajo un enfoque **Schema-First** y **Arquitect
 │           ├── ubl_models/              # Dataclasses generadas desde UBL-Invoice-2.1.xsd (xsdata)
 │           ├── mapper.py                # Traductor Dominio -> UBL 2.1
 │           ├── odoo_client.py           # Conector XML-RPC hacia Odoo (`account.move` / `sale.order`)
-│           └── xml_service.py           # Serializador XML UTF-8 + Validador XSD 2.1 (lxml)
+│           └── xml_service.py           # Serializador XML ISO-8859-1 + Validador XSD 2.1 (lxml)
 ├── tests/
 │   ├── test_invoice_generation.py       # Pruebas unitarias de generación y validación XSD
 │   └── test_odoo_client.py              # Pruebas unitarias del conector XML-RPC de Odoo (mocks)
@@ -69,15 +69,16 @@ ODOO_API_KEY=tu_api_key_o_password
 2. Genera un XML UBL 2.1 validado contra el XSD 2.1 ejecutando directamente `exportar_odoo.py` (carga `.env` y `src/` automáticamente):
 
 ```powershell
-# Exportar la última factura publicada (account.move) a salida/factura_odoo.xml
+# Exportar la última factura publicada (account.move) con nomenclatura SUNAT Perú:
+# salida/{RUC}-{TIPO}-{SERIE}-{CORRELATIVO_8D}.xml (ej. salida/20555111224-01-F001-00000002.xml)
 python exportar_odoo.py
 
-# O especificando origen/número/salida
-python exportar_odoo.py --source invoice --number "INV/2026/0001" -o salida/factura.xml
-python exportar_odoo.py --source sale --number "S00042" -o salida/pedido.xml
+# O especificando serie/origen/número/carpeta de salida
+python exportar_odoo.py --source invoice --number "INV/2026/0001" --series FE01 -o salida
+python exportar_odoo.py --source sale --number "S00042" -o salida
 
 # Modo demo offline (sin requerir Odoo encendido)
-python exportar_odoo.py --demo -o salida/demo.xml
+python exportar_odoo.py --demo -o salida
 ```
 
 ---

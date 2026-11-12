@@ -16,6 +16,7 @@ from invoice_xml.infrastructure import (
     OdooConnectionError,
     OdooXmlRpcClient,
     XsdValidator,
+    encode_xml_bytes,
 )
 
 NS = {
@@ -243,8 +244,8 @@ def test_odoo_client_generates_valid_ubl_xml_from_account_move(
     )
     xsd_validator.validate(xml_output)
 
-    root = etree.fromstring(xml_output.encode("utf-8"))
-    assert root.findtext("cbc:ID", namespaces=NS) == "INV/2026/0042"
+    root = etree.fromstring(encode_xml_bytes(xml_output))
+    assert root.findtext("cbc:ID", namespaces=NS) == "F001-00000042"
     assert root.findtext("cbc:Note", namespaces=NS) == "Emitida desde Odoo"
     assert root.findtext("cac:OrderReference/cbc:ID", namespaces=NS) == "S00042"
     assert root.findtext("cbc:LineCountNumeric", namespaces=NS) == "1"
@@ -277,8 +278,8 @@ def test_odoo_client_generates_valid_ubl_xml_from_sale_order(
     )
     xsd_validator.validate(xml_output)
 
-    root = etree.fromstring(xml_output.encode("utf-8"))
-    assert root.findtext("cbc:ID", namespaces=NS) == "S00042"
+    root = etree.fromstring(encode_xml_bytes(xml_output))
+    assert root.findtext("cbc:ID", namespaces=NS) == "F001-00000042"
     assert root.findtext("cbc:IssueDate", namespaces=NS) == "2026-11-11"
     assert root.findtext("cbc:DueDate", namespaces=NS) == "2026-11-30"
     assert (
@@ -349,7 +350,15 @@ def test_cli_demo_writes_valid_xml_file(tmp_path, xsd_validator: XsdValidator) -
 
     assert exit_code == 0
     assert out_file.exists()
-    xsd_validator.validate(out_file.read_text(encoding="utf-8"))
+    raw_bytes = out_file.read_bytes()
+    assert raw_bytes.startswith(b'<?xml version="1.0" encoding="ISO-8859-1"?>')
+    xsd_validator.validate(raw_bytes)
+
+    sunat_dir = tmp_path / "cpe"
+    assert cli_main(["--demo", "-o", str(sunat_dir)]) == 0
+    expected_sunat_file = sunat_dir / "20123456789-01-FE01-00000573.xml"
+    assert expected_sunat_file.exists()
+    xsd_validator.validate(expected_sunat_file.read_bytes())
 
 
 def test_config_from_env_reads_dotenv_file_and_prefers_os_environ(

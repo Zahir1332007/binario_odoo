@@ -8,7 +8,13 @@ from decimal import Decimal
 from typing import Any
 
 from invoice_xml.domain.exceptions import InvoiceDomainError
-from invoice_xml.domain.models import Address, Invoice, InvoiceLine, Party
+from invoice_xml.domain.models import (
+    Address,
+    Invoice,
+    InvoiceLine,
+    Party,
+    normalize_invoice_id,
+)
 
 
 def _parse_party(raw: Mapping[str, Any], role_name: str) -> Party:
@@ -57,7 +63,10 @@ def odoo_payload_to_domain(payload: Mapping[str, Any]) -> Invoice:
       - `invoice_lines`: lista de líneas (`name`, `quantity`, `price_unit`, `tax_rate` o `tax_ids`)
     """
     try:
-        invoice_id = str(payload["name"])
+        default_series = str(payload.get("series") or "F001")
+        invoice_id = normalize_invoice_id(
+            str(payload["name"]), default_series=default_series
+        )
         issue_date = date.fromisoformat(str(payload["invoice_date"]))
         currency_code = str(payload["currency"]).upper()
         supplier = _parse_party(payload["company"], "emisor (company)")
@@ -81,7 +90,7 @@ def odoo_payload_to_domain(payload: Mapping[str, Any]) -> Invoice:
             tax_rate = _parse_tax_rate(raw_line)
             tax_category = str(
                 raw_line.get("tax_category_id")
-                or ("S" if tax_rate > Decimal(0) else "Z")
+                or ("S" if tax_rate > Decimal(0) else "E")
             )
             lines.append(
                 InvoiceLine(
@@ -95,7 +104,7 @@ def odoo_payload_to_domain(payload: Mapping[str, Any]) -> Invoice:
                     else None,
                     quantity=Decimal(str(raw_line["quantity"])),
                     unit_price=Decimal(str(raw_line["price_unit"])),
-                    unit_code=str(raw_line.get("uom_code", "EA")),
+                    unit_code=str(raw_line.get("uom_code", "NIU")),
                     tax_rate=tax_rate,
                     tax_category_id=tax_category,
                     tax_scheme_id=str(raw_line.get("tax_scheme_id", "VAT")),
@@ -117,7 +126,7 @@ def odoo_payload_to_domain(payload: Mapping[str, Any]) -> Invoice:
         supplier=supplier,
         customer=customer,
         lines=tuple(lines),
-        invoice_type_code=str(payload.get("invoice_type_code", "380")),
+        invoice_type_code=str(payload.get("invoice_type_code", "01")),
         order_reference_id=str(payload["invoice_origin"])
         if payload.get("invoice_origin")
         else None,

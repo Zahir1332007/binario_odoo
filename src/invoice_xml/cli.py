@@ -10,21 +10,22 @@ from pathlib import Path
 from invoice_xml.application import GenerateInvoiceXmlUseCase
 from invoice_xml.domain.exceptions import InvoiceDomainError, XmlSchemaValidationError
 from invoice_xml.infrastructure import (
+    DEFAULT_XML_ENCODING,
     OdooConnectionConfig,
     OdooConnectionError,
     OdooXmlRpcClient,
 )
 
 DEMO_ODOO_PAYLOAD = {
-    "name": "INV/2026/0001",
+    "name": "FE01-00000573",
     "invoice_date": "2026-11-11",
     "invoice_date_due": "2026-12-11",
     "currency": "PEN",
     "invoice_origin": "SO0001",
-    "narration": "Factura generada en modo demo compatible con Odoo Ventas",
+    "narration": "Factura electrónica generada bajo estándar SUNAT Perú UBL 2.1",
     "company": {
         "vat": "20123456789",
-        "name": "Empresa Demo Odoo S.A.C.",
+        "name": "Empresa Demo Perú S.A.C.",
         "street": "Av. Universitaria s/n",
         "city": "Tingo María",
         "zip": "10131",
@@ -46,6 +47,7 @@ DEMO_ODOO_PAYLOAD = {
             "name": "Servicio de consultoría Odoo Ventas",
             "quantity": "1",
             "price_unit": "850.00",
+            "uom_code": "ZZ",
             "tax_ids": [{"name": "IGV 18%", "amount": 18.0}],
         }
     ],
@@ -78,7 +80,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         default=None,
-        help="Ruta de archivo donde guardar el XML generado. Si se omite, imprime en stdout.",
+        help="Archivo (.xml) o carpeta de salida (genera {RUC}-{TIPO}-{SERIE}-{CORRELATIVO}.xml). Si se omite, imprime en stdout.",
+    )
+    parser.add_argument(
+        "--series",
+        default=None,
+        help="Serie SUNAT de 4 caracteres cuando Odoo usa numeración interna (ej. F001 o FE01).",
+    )
+    parser.add_argument(
+        "--encoding",
+        default=DEFAULT_XML_ENCODING,
+        help=f"Codificación XML de salida (por defecto {DEFAULT_XML_ENCODING}).",
     )
     return parser
 
@@ -90,25 +102,42 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.demo:
-            xml_output = use_case.execute_from_odoo(DEMO_ODOO_PAYLOAD)
+            payload = dict(DEMO_ODOO_PAYLOAD)
+            if args.series:
+                payload["series"] = args.series
+            if args.output:
+                saved = use_case.execute_from_odoo_to_file(
+                    payload, args.output, encoding=args.encoding
+                )
+                print(f"XML UBL 2.1 validado ({args.encoding}) y guardado en: {saved}")
+            else:
+                print(use_case.execute_from_odoo(payload, encoding=args.encoding))
         else:
             config = OdooConnectionConfig.from_env()
             client = OdooXmlRpcClient(config)
-            xml_output = use_case.execute_from_odoo_gateway(
-                client,
-                document_number=args.number,
-                source=args.source,
-            )
+            if args.output:
+                saved = use_case.execute_from_odoo_gateway_to_file(
+                    client,
+                    args.output,
+                    document_number=args.number,
+                    source=args.source,
+                    series=args.series,
+                    encoding=args.encoding,
+                )
+                print(f"XML UBL 2.1 validado ({args.encoding}) y guardado en: {saved}")
+            else:
+                print(
+                    use_case.execute_from_odoo_gateway(
+                        client,
+                        document_number=args.number,
+                        source=args.source,
+                        encoding=args.encoding,
+                    )
+                )
     except (OdooConnectionError, InvoiceDomainError, XmlSchemaValidationError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(xml_output, encoding="utf-8")
-        print(f"XML UBL 2.1 validado y guardado en: {args.output}")
-    else:
-        print(xml_output)
     return 0
 
 

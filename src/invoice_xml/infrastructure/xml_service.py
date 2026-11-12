@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from lxml import etree
@@ -13,6 +14,9 @@ from invoice_xml.domain.exceptions import XmlSchemaValidationError
 from invoice_xml.infrastructure.ubl_models.maindoc.ubl_invoice_2_1 import (
     Invoice as UblInvoice,
 )
+
+DEFAULT_XML_ENCODING = "ISO-8859-1"
+_XML_ENCODING_RE = re.compile(r'<\?xml[^>]*\bencoding=["\']([^"\']+)["\']')
 
 UBL_NS_MAP = {
     None: "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2",
@@ -30,10 +34,32 @@ DEFAULT_INVOICE_XSD_PATH = (
 )
 
 
-def serialize_ubl_invoice(ubl_invoice: UblInvoice, *, pretty_print: bool = True) -> str:
-    """Serializa una instancia `UblInvoice` a XML UTF-8 con namespaces OASIS UBL 2.1."""
+def encode_xml_bytes(
+    xml_content: str, fallback_encoding: str = DEFAULT_XML_ENCODING
+) -> bytes:
+    """Codifica un string XML respetando la codificación declarada en su cabecera."""
+    match = _XML_ENCODING_RE.search(xml_content[:200])
+    encoding = match.group(1) if match else fallback_encoding
+    return xml_content.encode(encoding, errors="xmlcharrefreplace")
+
+
+def write_xml_file(xml_content: str, output_path: Path | str) -> Path:
+    """Persiste un documento XML en disco con los bytes exactos de su codificación declarada."""
+    destination = Path(output_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(encode_xml_bytes(xml_content))
+    return destination
+
+
+def serialize_ubl_invoice(
+    ubl_invoice: UblInvoice,
+    *,
+    pretty_print: bool = True,
+    encoding: str = DEFAULT_XML_ENCODING,
+) -> str:
+    """Serializa una instancia `UblInvoice` a XML con la codificación indicada (por defecto ISO-8859-1)."""
     config = SerializerConfig(
-        encoding="UTF-8",
+        encoding=encoding,
         xml_declaration=True,
         indent="  " if pretty_print else None,
     )
@@ -57,7 +83,9 @@ class XsdValidator:
     def validate(self, xml_content: str | bytes) -> None:
         """Valida un documento XML contra Invoice XSD 2.1; lanza `XmlSchemaValidationError` si falla."""
         raw_bytes = (
-            xml_content.encode("utf-8") if isinstance(xml_content, str) else xml_content
+            encode_xml_bytes(xml_content)
+            if isinstance(xml_content, str)
+            else xml_content
         )
         parser = etree.XMLParser(resolve_entities=False, no_network=True)
         try:

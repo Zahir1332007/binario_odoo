@@ -13,5 +13,5 @@ if str(SRC_DIR) not in sys.path:
 from invoice_xml.cli import main
 
 if __name__ == "__main__":
-    argv = sys.argv[1:] or ["--source", "invoice", "-o", "salida/factura_odoo.xml"]
+    argv = sys.argv[1:] or ["--source", "invoice", "-o", "salida"]
     raise SystemExit(main(argv))

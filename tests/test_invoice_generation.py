@@ -18,7 +18,11 @@ from invoice_xml.domain import (
     Party,
     XmlSchemaValidationError,
 )
-from invoice_xml.infrastructure import DEFAULT_INVOICE_XSD_PATH, XsdValidator
+from invoice_xml.infrastructure import (
+    DEFAULT_INVOICE_XSD_PATH,
+    XsdValidator,
+    encode_xml_bytes,
+)
 from invoice_xml.infrastructure.ubl_models.maindoc.ubl_invoice_2_1 import (
     Invoice as UblInvoice,
 )
@@ -106,12 +110,20 @@ def test_generates_valid_ubl_21_xml_from_domain(
 
     xml_output = use_case.execute(sample_invoice)
 
+    assert xml_output.startswith('<?xml version="1.0" encoding="ISO-8859-1"?>')
+
     # Validación explícita contra el archivo XSD oficial OASIS UBL 2.1
     xsd_validator.validate(xml_output)
 
-    root = etree.fromstring(xml_output.encode("utf-8"))
+    root = etree.fromstring(encode_xml_bytes(xml_output))
     assert root.tag == "{urn:oasis:names:specification:ubl:schema:xsd:Invoice-2}Invoice"
     assert root.findtext("cbc:UBLVersionID", namespaces=NS) == "2.1"
+    assert root.findtext("cbc:CustomizationID", namespaces=NS) == "2.0"
+    assert root.findtext("cbc:ProfileID", namespaces=NS) == "0101"
+    invoice_type = root.find("cbc:InvoiceTypeCode", namespaces=NS)
+    assert invoice_type is not None
+    assert invoice_type.text == "01"
+    assert invoice_type.attrib["listID"] == "0101"
     assert root.findtext("cbc:ID", namespaces=NS) == "F001-0000123"
     assert root.findtext("cbc:IssueDate", namespaces=NS) == "2026-11-11"
     assert root.findtext("cbc:DueDate", namespaces=NS) == "2026-12-11"
@@ -143,6 +155,52 @@ def test_generates_valid_ubl_21_xml_from_domain(
     assert (
         xml_lines[0].find("cbc:InvoicedQuantity", namespaces=NS).attrib["unitCode"]
         == "ZZ"
+    )
+    supplier_id = root.find(
+        "cac:AccountingSupplierParty/cac:Party/cac:PartyIdentification/cbc:ID",
+        namespaces=NS,
+    )
+    customer_id = root.find(
+        "cac:AccountingCustomerParty/cac:Party/cac:PartyIdentification/cbc:ID",
+        namespaces=NS,
+    )
+    assert supplier_id is not None and supplier_id.attrib["schemeID"] == "6"
+    assert customer_id is not None and customer_id.attrib["schemeID"] == "6"
+    assert (
+        root.findtext(
+            "cac:Signature/cac:SignatoryParty/cac:PartyIdentification/cbc:ID",
+            namespaces=NS,
+        )
+        == "20123456789"
+    )
+    assert (
+        root.findtext(
+            "cac:AccountingSupplierParty/cac:Party/cac:PartyLegalEntity/cac:RegistrationAddress/cbc:AddressTypeCode",
+            namespaces=NS,
+        )
+        == "0000"
+    )
+    assert (
+        root.findtext(
+            "cac:TaxTotal/cac:TaxSubtotal/cac:TaxCategory/cac:TaxScheme/cbc:ID",
+            namespaces=NS,
+        )
+        == "1000"
+    )
+    assert (
+        xml_lines[0].findtext(
+            "cac:PricingReference/cac:AlternativeConditionPrice/cbc:PriceTypeCode",
+            namespaces=NS,
+        )
+        == "01"
+    )
+    payment_terms = root.findall("cac:PaymentTerms", namespaces=NS)
+    assert len(payment_terms) == 2
+    assert (
+        payment_terms[0].findtext("cbc:PaymentMeansID", namespaces=NS) == "Credito"
+    )
+    assert (
+        payment_terms[1].findtext("cbc:PaymentMeansID", namespaces=NS) == "Cuota001"
     )
 
 
@@ -196,8 +254,8 @@ def test_generates_valid_xml_from_odoo_sales_payload_with_mixed_taxes(
 
     xsd_validator.validate(xml_output)
 
-    root = etree.fromstring(xml_output.encode("utf-8"))
-    assert root.findtext("cbc:ID", namespaces=NS) == "INV/2026/00088"
+    root = etree.fromstring(encode_xml_bytes(xml_output))
+    assert root.findtext("cbc:ID", namespaces=NS) == "F001-00000088"
     assert (
         root.findtext(
             "cac:AccountingCustomerParty/cac:Party/cac:PartyName/cbc:Name",
@@ -240,8 +298,66 @@ def test_writes_xml_file_to_disk(
     saved_path = use_case.execute_to_file(sample_invoice, output_file)
 
     assert saved_path.exists()
-    content = saved_path.read_text(encoding="utf-8")
-    xsd_validator.validate(content)
+    raw_bytes = saved_path.read_bytes()
+    assert raw_bytes.startswith(b'<?xml version="1.0" encoding="ISO-8859-1"?>')
+    xsd_validator.validate(raw_bytes)
+    root = etree.fromstring(raw_bytes)
+    assert (
+        root.findtext(
+            "cac:AccountingSupplierParty/cac:Party/cac:PostalAddress/cbc:CityName",
+            namespaces=NS,
+        )
+        == "Tingo María"
+    )
+
+
+def test_iso_8859_1_escapes_non_latin1_characters_safely(
+    tmp_path,
+    xsd_validator: XsdValidator,
+    sample_invoice: Invoice,
+) -> None:
+    use_case = GenerateInvoiceXmlUseCase(validator=xsd_validator)
+    invoice_with_euro = Invoice(
+        invoice_id=sample_invoice.invoice_id,
+        issue_date=sample_invoice.issue_date,
+        currency_code="EUR",
+        supplier=sample_invoice.supplier,
+        customer=sample_invoice.customer,
+        lines=sample_invoice.lines,
+        note="Precio referencial: 100 € — Tingo María",
+    )
+    saved_path = use_case.execute_to_file(invoice_with_euro, tmp_path / "euro_iso.xml")
+    raw_bytes = saved_path.read_bytes()
+    xsd_validator.validate(raw_bytes)
+    root = etree.fromstring(raw_bytes)
+    assert (
+        root.findtext("cbc:Note", namespaces=NS)
+        == "Precio referencial: 100 € — Tingo María"
+    )
+
+
+def test_domain_validates_and_normalizes_ose_series_invoice_id(
+    sample_invoice: Invoice,
+) -> None:
+    from invoice_xml.domain import normalize_invoice_id
+
+    assert normalize_invoice_id("INV/2026/00002") == "F001-00000002"
+    assert normalize_invoice_id("FE01-573") == "FE01-00000573"
+    assert normalize_invoice_id("f001-0000123") == "F001-00000123"
+    assert sample_invoice.sunat_filename == "20123456789-01-F001-00000123.xml"
+
+    with pytest.raises(InvoiceDomainError, match="SERIE-CORRELATIVO"):
+        Invoice(
+            invoice_id="INV/2026/00002",
+            issue_date=date(2026, 11, 11),
+            currency_code="USD",
+            supplier=sample_invoice.supplier,
+            customer=sample_invoice.customer,
+            lines=sample_invoice.lines,
+        )
+
+    with pytest.raises(InvoiceDomainError, match="correlativo numérico"):
+        normalize_invoice_id("SIN-NUMEROS")
 
 
 def test_domain_rejects_invalid_invoice_data(sample_invoice: Invoice) -> None:
